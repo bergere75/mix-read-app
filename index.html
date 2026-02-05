@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample Reception & Aliquoting</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #F0F2F5; }
+        .box-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 2px;
+            background: #E2E8F0;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        .box-cell {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            font-size: 0.6rem;
+            font-weight: bold;
+            color: #CBD5E0;
+            border-radius: 2px;
+            cursor: pointer;
+            position: relative; /* For absolute positioning of indicators */
+        }
+        .box-cell.occupied {
+            background-color: #48BB78; /* Green */
+            color: white;
+        }
+        .box-cell.current {
+            background-color: #F6E05E; /* Yellow */
+            color: #744210;
+            border: 2px solid #D69E2E;
+        }
+        .box-cell.occupied:hover {
+            opacity: 0.9;
+            transform: scale(1.05);
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        /* Note Indicator (Orange Triangle) */
+        .box-cell.has-note::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-top: 6px solid #F59E0B; /* Orange */
+        }
+        .section-header { font-size: 1.125rem; font-weight: 700; color: #2D3748; margin-bottom: 1rem; }
+        /* Modal Transitions */
+        .modal { transition: opacity 0.25s ease; }
+    </style>
+</head>
+<body class="p-6">
+
+    <div class="max-w-7xl mx-auto">
+
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Sample Reception & Aliquoting</h1>
+                <p class="text-sm text-gray-500">Based on SOP_Prélèvement & Samples Management PPT</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="export-manifest-btn" class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">Export Transmission Sheet</button>
+                <button onclick="window.location.reload()" class="bg-gray-500 text-white px-4 py-2 rounded shadow hover:bg-gray-600">Reset</button>
+            </div>
+        </header>
+
+        <!-- Global Settings -->
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1">Study Name</label>
+                <input type="text" id="study-name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" placeholder="e.g. SEROSURVEY 2024">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1">Collection Site / Area</label>
+                <input type="text" id="collection-site" class="w-full p-2 border rounded" placeholder="e.g. Zone de Santé Kinshasa">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1">Sample Type</label>
+                <select id="sample-type" class="w-full p-2 border rounded bg-white">
+                    <option value="Serum" selected>Serum</option>
+                    <option value="Plasma">Plasma</option>
+                    <option value="Whole Blood">Whole Blood</option>
+                    <option value="PBMC">PBMC</option>
+                    <option value="Saliva">Saliva</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- LEFT COLUMN: Input & QC -->
+            <div class="lg:col-span-1 space-y-6">
+
+                <!-- 1. Reception QC -->
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h2 class="section-header">1. Reception QC & Aliquot Calc</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Scan Primary Tube ID</label>
+                            <input type="text" id="primary-id" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 font-mono" placeholder="Scan ID..." autofocus>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Volume (mL)</label>
+                                <input type="number" id="sample-vol" class="w-full p-2 border rounded" placeholder="e.g. 5.0" step="0.1">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Temp (°C)</label>
+                                <input type="number" id="package-temp" class="w-full p-2 border rounded" placeholder="e.g. 4.0">
+                            </div>
+                        </div>
+
+                        <!-- Calculated Aliquots -->
+                        <div class="bg-gray-50 p-3 rounded border">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm font-bold text-gray-700">Aliquots to Create:</span>
+                                <span id="aliquot-count-display" class="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">3</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <label class="flex items-center text-xs">
+                                    <input type="radio" name="aliquot-count" value="1" class="mr-1"> 1 (Goma Only)
+                                </label>
+                                <label class="flex items-center text-xs">
+                                    <input type="radio" name="aliquot-count" value="2" class="mr-1"> 2 (+Kin)
+                                </label>
+                                <label class="flex items-center text-xs">
+                                    <input type="radio" name="aliquot-count" value="3" class="mr-1" checked> 3 (All)
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2 italic">Low volume? Prioritize Box A (Goma).</p>
+                        </div>
+
+                        <div class="flex gap-4">
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="hemolysis-check" class="rounded text-red-600">
+                                <span class="text-sm text-gray-700">Hemolyzed?</span>
+                            </label>
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="damage-check" class="rounded text-red-600">
+                                <span class="text-sm text-gray-700">Tube Damaged?</span>
+                            </label>
+                        </div>
+                        <button id="process-sample-btn" class="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition">
+                            Process & Assign Aliquots
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Aliquot Labels -->
+                <div id="labels-panel" class="bg-white p-6 rounded-lg shadow hidden">
+                    <h2 class="section-header">2. Print Aliquot Labels</h2>
+                    <div id="generated-labels" class="space-y-2 mb-4">
+                        <!-- Label previews go here -->
+                    </div>
+                    <button id="print-labels-btn" class="w-full bg-gray-800 text-white py-2 rounded hover:bg-gray-900">
+                        Print Sticker Sheet (PDF)
+                    </button>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Box Management -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h2 class="section-header flex justify-between">
+                        <span>3. Cryobox Storage Assignment</span>
+                        <span class="text-xs font-normal bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Priority: A > B > C</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 mb-2">Click on any occupied well to add a note.</p>
+
+                    <!-- Box Grid Layout -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                        <!-- Box A: GOMA -->
+                        <div class="border p-3 rounded bg-blue-50">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="font-bold text-sm text-blue-800">Box A (GOMA)</h3>
+                                <span id="count-boxA" class="text-xs bg-white border border-blue-200 px-2 rounded">0/81</span>
+                            </div>
+                            <div id="grid-boxA" class="box-grid bg-white border border-blue-200"></div>
+                            <div class="mt-2 text-xs text-gray-500">Next: <span id="pos-boxA" class="font-bold">-</span></div>
+                        </div>
+
+                        <!-- Box B: KINSHASA -->
+                        <div class="border p-3 rounded bg-green-50">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="font-bold text-sm text-green-800">Box B (KIN)</h3>
+                                <span id="count-boxB" class="text-xs bg-white border border-green-200 px-2 rounded">0/81</span>
+                            </div>
+                            <div id="grid-boxB" class="box-grid bg-white border border-green-200"></div>
+                            <div class="mt-2 text-xs text-gray-500">Next: <span id="pos-boxB" class="font-bold">-</span></div>
+                        </div>
+
+                        <!-- Box C: BIOBANK -->
+                        <div class="border p-3 rounded bg-purple-50">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="font-bold text-sm text-purple-800">Box C (BIO)</h3>
+                                <span id="count-boxC" class="text-xs bg-white border border-purple-200 px-2 rounded">0/81</span>
+                            </div>
+                            <div id="grid-boxC" class="box-grid bg-white border border-purple-200"></div>
+                            <div class="mt-2 text-xs text-gray-500">Next: <span id="pos-boxC" class="font-bold">-</span></div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Processed List -->
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h2 class="section-header">Processed Samples Log</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2">Time</th>
+                                    <th class="px-4 py-2">Primary ID</th>
+                                    <th class="px-4 py-2">Aliquots</th>
+                                    <th class="px-4 py-2">Box A</th>
+                                    <th class="px-4 py-2">Box B</th>
+                                    <th class="px-4 py-2">Box C</th>
+                                </tr>
+                            </thead>
+                            <tbody id="log-body">
+                                <!-- Log entries -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Note Taking Modal -->
+    <div id="note-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-96 modal">
+            <h3 class="text-lg font-bold mb-4" id="note-modal-title">Add Note</h3>
+            <textarea id="note-input" class="w-full border p-2 rounded mb-4 focus:ring-2 focus:ring-blue-500" rows="3" placeholder="e.g. Cap loose, Low volume, Hemolyzed..."></textarea>
+            <div class="flex justify-end gap-2">
+                <button id="cancel-note-btn" class="px-4 py-2 bg-gray-300 rounded text-gray-800 hover:bg-gray-400">Cancel</button>
+                <button id="save-note-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save Note</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- State Management ---
+    // Naming matched to PPT: Box A (Goma), Box B (Kin), Box C (Biobank)
+    const boxes = {
+        boxA: { name: 'Box A (Goma)', suffix: 'A', count: 0, capacity: 81, data: [] },
+        boxB: { name: 'Box B (Kinshasa)', suffix: 'B', count: 0, capacity: 81, data: [] },
+        boxC: { name: 'Box C (Biobank)', suffix: 'C', count: 0, capacity: 81, data: [] }
+    };
+
+    const processedSamples = [];
+
+    // Note Modal State
+    let currentNoteContext = null;
+
+    // --- DOM Elements ---
+    const primaryIdInput = document.getElementById('primary-id');
+    const volumeInput = document.getElementById('sample-vol');
+    const aliquotCountRadios = document.getElementsByName('aliquot-count');
+    const aliquotCountDisplay = document.getElementById('aliquot-count-display');
+    const processBtn = document.getElementById('process-sample-btn');
+    const logBody = document.getElementById('log-body');
+    const labelsPanel = document.getElementById('labels-panel');
+    const generatedLabelsDiv = document.getElementById('generated-labels');
+    const printLabelsBtn = document.getElementById('print-labels-btn');
+    const exportBtn = document.getElementById('export-manifest-btn');
+    const collectionSiteInput = document.getElementById('collection-site');
+    const studyNameInput = document.getElementById('study-name');
+    const sampleTypeInput = document.getElementById('sample-type');
+
+    // Modal Elements
+    const noteModal = document.getElementById('note-modal');
+    const noteTitle = document.getElementById('note-modal-title');
+    const noteInput = document.getElementById('note-input');
+    const saveNoteBtn = document.getElementById('save-note-btn');
+    const cancelNoteBtn = document.getElementById('cancel-note-btn');
+
+    // --- Helpers ---
+    const getWellName = (index) => {
+        // 0-80 -> A1 to I9
+        const row = String.fromCharCode(65 + Math.floor(index / 9)); // A=65
+        const col = (index % 9) + 1;
+        return `${row}${col}`;
+    };
+
+    const renderGrid = (boxKey) => {
+        const container = document.getElementById(`grid-${boxKey}`);
+        container.innerHTML = '';
+        const box = boxes[boxKey];
+
+        for (let i = 0; i < box.capacity; i++) {
+            const wellName = getWellName(i);
+            const div = document.createElement('div');
+
+            // Check if occupied
+            if (i < box.count) {
+                div.className = 'box-cell occupied';
+                div.textContent = wellName;
+
+                // Add note indicator if exists
+                const sampleID = box.data[i];
+                const sampleEntry = processedSamples.find(s => s.id === sampleID);
+
+                if (sampleEntry && sampleEntry.notes && sampleEntry.notes[boxKey]) {
+                    div.classList.add('has-note');
+                    div.title = `${sampleID} - Note: ${sampleEntry.notes[boxKey]}`;
+                } else {
+                     div.title = sampleID;
+                }
+
+                // Add Click Listener for Notes
+                div.onclick = () => openNoteModal(boxKey, i, sampleID);
+
+            }
+            else if (i === box.count) {
+                div.className = 'box-cell current';
+                div.textContent = wellName;
+            } else {
+                 div.className = 'box-cell';
+                 div.textContent = wellName;
+            }
+            container.appendChild(div);
+        }
+
+        // Update Counters
+        document.getElementById(`count-${boxKey}`).textContent = `${box.count}/${box.capacity}`;
+        document.getElementById(`pos-${boxKey}`).textContent = box.count < box.capacity ? getWellName(box.count) : 'FULL';
+    };
+
+    // Initialize Grids
+    renderGrid('boxA');
+    renderGrid('boxB');
+    renderGrid('boxC');
+
+    // --- Volume Logic ---
+    volumeInput.addEventListener('input', (e) => {
+        const vol = parseFloat(e.target.value);
+        if (!isNaN(vol)) {
+            let count = 3;
+            if (vol < 2.0) count = 1;      // Low volume logic
+            else if (vol < 4.0) count = 2;
+            else count = 3;
+
+            // Auto-select radio
+            for(let r of aliquotCountRadios) {
+                if (parseInt(r.value) === count) r.checked = true;
+            }
+            aliquotCountDisplay.textContent = count;
+        }
+    });
+
+    // Update display if radio changed manually
+    Array.from(aliquotCountRadios).forEach(r => {
+        r.addEventListener('change', (e) => {
+            aliquotCountDisplay.textContent = e.target.value;
+        });
+    });
+
+    // --- Core Processing Logic ---
+    processBtn.addEventListener('click', () => {
+        const id = primaryIdInput.value.trim();
+        if (!id) { alert("Please scan or enter a Primary ID."); return; }
+
+        // Determine Aliquot Count
+        let numAliquots = 3;
+        for(let r of aliquotCountRadios) if(r.checked) numAliquots = parseInt(r.value);
+
+        // QC Checks
+        const isHemolyzed = document.getElementById('hemolysis-check').checked;
+        const isDamaged = document.getElementById('damage-check').checked;
+        const temp = document.getElementById('package-temp').value;
+        const study = studyNameInput.value || "UnknownStudy";
+        const type = sampleTypeInput.value;
+
+        const status = (isHemolyzed || isDamaged) ? 'FLAGGED' : 'OK';
+
+        const newEntry = {
+            time: new Date().toLocaleTimeString(),
+            id: id,
+            status: status,
+            temp: temp,
+            study: study,
+            type: type,
+            aliquots: numAliquots,
+            boxAPos: '',
+            boxBPos: '',
+            boxCPos: '',
+            notes: { boxA: '', boxB: '', boxC: '' }
+        };
+
+        // Box A (Goma) - Mandatory / Priority 1
+        if (numAliquots >= 1 && boxes.boxA.count < boxes.boxA.capacity) {
+            newEntry.boxAPos = getWellName(boxes.boxA.count);
+            boxes.boxA.data.push(id);
+            boxes.boxA.count++;
+            renderGrid('boxA');
+        }
+
+        // Box B (Kin) - Priority 2
+        if (numAliquots >= 2 && boxes.boxB.count < boxes.boxB.capacity) {
+            newEntry.boxBPos = getWellName(boxes.boxB.count);
+            boxes.boxB.data.push(id);
+            boxes.boxB.count++;
+            renderGrid('boxB');
+        }
+
+        // Box C (Biobank) - Priority 3
+        if (numAliquots >= 3 && boxes.boxC.count < boxes.boxC.capacity) {
+            newEntry.boxCPos = getWellName(boxes.boxC.count);
+            boxes.boxC.data.push(id);
+            boxes.boxC.count++;
+            renderGrid('boxC');
+        }
+
+        processedSamples.unshift(newEntry);
+        updateLog();
+        generateLabelPreviews(newEntry);
+
+        // Reset Input
+        primaryIdInput.value = '';
+        primaryIdInput.focus();
+    });
+
+    const updateLog = () => {
+        logBody.innerHTML = processedSamples.map(s => `
+            <tr class="bg-white border-b ${s.status === 'FLAGGED' ? 'bg-red-50' : ''}">
+                <td class="px-4 py-2">${s.time}</td>
+                <td class="px-4 py-2 font-bold">${s.id}</td>
+                <td class="px-4 py-2 ${s.status === 'FLAGGED' ? 'text-red-600 font-bold' : 'text-green-600'}">${s.status}</td>
+                <td class="px-4 py-2">${s.aliquots}</td>
+                <td class="px-4 py-2 text-blue-800">${s.boxAPos || '-'}</td>
+                <td class="px-4 py-2 text-green-800">${s.boxBPos || '-'}</td>
+                <td class="px-4 py-2 text-purple-800">${s.boxCPos || '-'}</td>
+            </tr>
+        `).join('');
+    };
+
+    const generateLabelPreviews = (entry) => {
+        labelsPanel.classList.remove('hidden');
+        generatedLabelsDiv.innerHTML = '';
+
+        const aliquots = [
+            { dest: 'GOMA', pos: entry.boxAPos, color: 'border-blue-500', suffix: 'A' },
+            { dest: 'KIN', pos: entry.boxBPos, color: 'border-green-500', suffix: 'B' },
+            { dest: 'BIO', pos: entry.boxCPos, color: 'border-purple-500', suffix: 'C' }
+        ];
+
+        aliquots.forEach(ali => {
+            if (ali.pos) {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = `flex items-center gap-4 p-2 border-l-4 bg-gray-50 ${ali.color}`;
+                const fullId = `${entry.id}-${ali.suffix}`;
+
+                // Create QR with metadata
+                const qrValue = `${fullId}|${ali.dest}|${ali.pos}|${entry.type}|${entry.study}`;
+
+                const canvas = document.createElement('canvas');
+                const qr = new QRious({
+                    element: canvas,
+                    value: qrValue,
+                    size: 50
+                });
+
+                const info = document.createElement('div');
+                info.innerHTML = `
+                    <div class="font-bold text-sm">${fullId}</div>
+                    <div class="text-xs">${ali.dest} - ${ali.pos}</div>
+                    <div class="text-xxs text-gray-500">${entry.type}</div>
+                `;
+
+                labelDiv.appendChild(canvas);
+                labelDiv.appendChild(info);
+                generatedLabelsDiv.appendChild(labelDiv);
+            }
+        });
+    };
+
+    // --- Note Modal Logic ---
+    const openNoteModal = (boxKey, index, sampleID) => {
+        currentNoteContext = { boxKey, index, sampleID };
+        const boxName = boxes[boxKey].name;
+        const wellName = getWellName(index);
+
+        noteTitle.textContent = `Note for ${sampleID} (${boxName} - ${wellName})`;
+
+        // Find existing note
+        const sample = processedSamples.find(s => s.id === sampleID);
+        noteInput.value = (sample && sample.notes) ? sample.notes[boxKey] : '';
+
+        noteModal.classList.remove('hidden');
+    };
+
+    saveNoteBtn.addEventListener('click', () => {
+        if(!currentNoteContext) return;
+        const { boxKey, sampleID } = currentNoteContext;
+        const sample = processedSamples.find(s => s.id === sampleID);
+
+        if(sample) {
+            sample.notes[boxKey] = noteInput.value.trim();
+        }
+
+        renderGrid(boxKey); // Re-render to show note indicator
+        noteModal.classList.add('hidden');
+    });
+
+    cancelNoteBtn.addEventListener('click', () => {
+        noteModal.classList.add('hidden');
+    });
+
+
+    // --- Export Logic (Transmission Sheet) ---
+    exportBtn.addEventListener('click', () => {
+        if (processedSamples.length === 0) { alert("No data to export."); return; }
+
+        const wb = XLSX.utils.book_new();
+
+        const data = processedSamples.map(s => ({
+            "Date": new Date().toLocaleDateString(),
+            "Time": s.time,
+            "Study": s.study,
+            "Primary ID": s.id,
+            "Sample Type": s.type,
+            "Condition": s.status,
+            "Temp (C)": s.temp,
+            "Box A (Goma)": s.boxAPos,
+            "Box A Note": s.notes.boxA,
+            "Box B (Kin)": s.boxBPos,
+            "Box B Note": s.notes.boxB,
+            "Box C (Bio)": s.boxCPos,
+            "Box C Note": s.notes.boxC
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, "Transmission Sheet");
+        XLSX.writeFile(wb, `Transmission_Sheet_${new Date().toISOString().slice(0,10)}.xlsx`);
+    });
+
+    // --- Tube Print Logic ---
+    printLabelsBtn.addEventListener('click', () => {
+        const lastSample = processedSamples[0];
+        if (!lastSample) return;
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [50, 25] });
+
+        // Helper to add label page
+        const createLabelPage = (dest, pos, suffix) => {
+            const fullId = `${lastSample.id}-${suffix}`;
+
+            doc.setFontSize(8);
+            doc.text(fullId, 2, 5);
+            doc.text(`${dest} | ${pos}`, 2, 9);
+            doc.setFontSize(6);
+            doc.text(`${lastSample.type}`, 2, 13);
+            doc.text(lastSample.study.substring(0, 20), 2, 16);
+
+            const qrValue = `${fullId}|${dest}|${pos}|${lastSample.type}|${lastSample.study}`;
+            const qr = new QRious({ value: qrValue, size: 50 });
+            doc.addImage(qr.toDataURL(), 'PNG', 30, 2, 18, 18);
+        };
+
+        // 1. Goma
+        createLabelPage('GOMA', lastSample.boxAPos, 'A');
+
+        // 2. Kin
+        if (lastSample.boxBPos) {
+            doc.addPage([50, 25]);
+            createLabelPage('KIN', lastSample.boxBPos, 'B');
+        }
+
+        // 3. Biobank
+        if (lastSample.boxCPos) {
+            doc.addPage([50, 25]);
+            createLabelPage('BIO', lastSample.boxCPos, 'C');
+        }
+
+        doc.save(`Labels_${lastSample.id}.pdf`);
+    });
+
+});
+</script>
+</body>
+</html>

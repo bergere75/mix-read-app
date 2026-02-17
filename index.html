@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mix-and-Read Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #F0F2F5; }
+        .step-card {
+            background-color: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: all 0.3s ease-in-out;
+        }
+        .btn-primary {
+            background-color: #3182CE; color: white; font-weight: 600; padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem; transition: background-color 0.2s;
+        }
+        .btn-primary:hover { background-color: #2B6CB0; }
+        .btn-primary:disabled { background-color: #A0AEC0; cursor: not-allowed; }
+        .btn-secondary {
+            background-color: #E2E8F0; color: #2D3748; font-weight: 600; padding: 0.5rem 1rem;
+            border-radius: 0.5rem; transition: background-color 0.2s;
+        }
+        .btn-secondary:hover { background-color: #CBD5E0; }
+        .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger {
+            background-color: #E53E3E; color: white; font-weight: 600; padding: 0.5rem 1rem;
+            border-radius: 0.5rem; transition: background-color 0.2s;
+        }
+        .btn-danger:hover { background-color: #C53030; }
+        .hidden-section { display: none; }
+        .toast-notification {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(200%);
+            background-color: #2D3748; color: white; padding: 1rem 2rem; border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.5s ease-in-out; z-index: 100;
+        }
+        .toast-notification.show { transform: translateX(-50%) translateY(0); }
+        .plate-grid { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 4px; }
+        .well {
+            aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-size: 0.65rem; font-weight: 600; position: relative;
+            padding: 4px; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .well-header { font-weight: 700; color: #718096; }
+        .well-tooltip {
+            visibility: hidden; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+            background-color: #1A202C; color: white; padding: 0.5rem; border-radius: 0.25rem;
+            font-size: 0.75rem; white-space: nowrap; z-index: 10; opacity: 0; transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        .well:hover .well-tooltip { visibility: visible; opacity: 1; }
+
+        .excel-input-header {
+            display: grid;
+            grid-template-columns: 3rem 1fr 1fr 1fr;
+            gap: 0.5rem;
+            background-color: #F7FAFC;
+            padding: 0.5rem;
+            border: 1px solid #E2E8F0;
+            border-bottom: none;
+            border-radius: 0.375rem 0.375rem 0 0;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #718096;
+            text-transform: uppercase;
+        }
+        .input-wrapper {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid #E2E8F0;
+            border-radius: 0 0 0.375rem 0.375rem;
+            background: white;
+            overflow: hidden;
+        }
+        .input-wrapper:focus-within {
+            border-color: #3182CE;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
+        }
+        .line-numbers {
+            background-color: #F7FAFC;
+            color: #A0AEC0;
+            padding: 0.5rem 0.25rem;
+            text-align: right;
+            font-family: monospace;
+            font-size: 0.875rem;
+            line-height: 1.5rem;
+            border-right: 1px solid #E2E8F0;
+            user-select: none;
+            min-width: 3rem;
+            white-space: pre-wrap;
+        }
+        .excel-textarea {
+            border: none;
+            resize: none;
+            white-space: pre;
+            overflow-x: auto;
+            overflow-y: hidden;
+            line-height: 1.5rem;
+            width: 100%;
+            padding: 0.5rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+        .excel-textarea:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="toast" class="toast-notification"></div>
+
+    <main class="container mx-auto p-4 md:p-8 max-w-6xl">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Mix-and-Read Manager</h1>
+            <button id="reset-btn" class="btn-secondary">Reset</button>
+        </header>
+
+        <!-- Step 1 -->
+        <section id="step1" class="step-card">
+            <div class="flex items-center mb-4">
+                <div class="flex items-center justify-center w-12 h-12 bg-blue-100 text-blue-600 rounded-full text-xl font-bold">1</div>
+                <div class="ml-4">
+                    <h2 class="text-2xl font-bold">Experiment Setup</h2>
+                    <p class="text-gray-600">Configure assay type and organize samples. You can paste columns directly from Excel.</p>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label for="assay-select" class="block text-sm font-medium text-gray-700 mb-1">Assay Selection</label>
+                <select id="assay-select" class="w-full md:w-1/2 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    <option value="MARV-NP">MARV-NP Mix and Read</option>
+                    <option value="EBOV GP">EBOV GP Mix and Read</option>
+                    <option value="VSV-N">VSV-N Mix and Read</option>
+                    <option value="CCHFV NP">CCHFV NP Mix and Read</option>
+                </select>
+            </div>
+
+            <div class="mb-6 border-t border-gray-200 pt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <label for="num-plates" class="text-lg font-semibold text-gray-700">Number of Plates</label>
+                    <input type="number" id="num-plates" min="1" max="20" value="1" class="w-20 p-2 text-center border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div id="plate-inputs-container" class="space-y-6"></div>
+            </div>
+
+            <div class="text-center mt-8">
+                <button id="generate-btn" class="btn-primary w-full md:w-auto">Generate Plates &amp; Calculate Reagents</button>
+            </div>
+        </section>
+
+        <!-- Generated Workplan -->
+        <section id="workplan-section" class="hidden-section step-card bg-blue-50 border border-blue-200">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Generated Workplan</h3>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div id="reagents-card" class="lg:col-span-1">
+                    <h4 class="font-semibold text-gray-700 mb-2">Required Stock Reagents</h4>
+                    <table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                            <tr><th class="px-4 py-2">Reagent</th><th class="px-4 py-2">Volume</th></tr>
+                        </thead>
+                        <tbody id="reagents-table-body"></tbody>
+                    </table>
+                    <button id="download-workplan-btn" class="btn-secondary w-full mt-4" disabled>Download PDF Workplan</button>
+                </div>
+                <div id="plate-layouts-container" class="lg:col-span-2"></div>
+            </div>
+        </section>
+
+        <!-- Step 2 -->
+        <section id="step2" class="hidden-section step-card">
+            <div class="flex items-center mb-4">
+                <div class="flex items-center justify-center w-12 h-12 bg-blue-100 text-blue-600 rounded-full text-xl font-bold">2</div>
+                <div class="ml-4">
+                    <h2 class="text-2xl font-bold">Import &amp; Process Data</h2>
+                    <p class="text-gray-600">Upload raw data XLSX files. Files are matched to plates by embedded timestamp (sheet: "Luminescence quickread", cell D8) in chronological order.</p>
+                </div>
+            </div>
+            <div class="mt-6 text-center">
+                <label for="file-upload" class="btn-secondary cursor-pointer">
+                    <span>Upload Raw Data XLSX Files</span>
+                    <input id="file-upload" type="file" class="hidden" multiple accept=".xlsx, .xls">
+                </label>
+                <p id="file-list" class="text-sm text-gray-500 mt-2"></p>
+            </div>
+            <!-- File matching info shown after processing -->
+            <div id="file-match-info" class="hidden-section mt-4"></div>
+            <div class="mt-4 text-center">
+                <button id="process-btn" class="btn-primary" disabled>Process Data</button>
+            </div>
+        </section>
+
+        <!-- Step 3 -->
+        <section id="step3" class="hidden-section step-card">
+            <div class="flex items-center mb-4">
+                <div class="flex items-center justify-center w-12 h-12 bg-green-100 text-green-600 rounded-full text-xl font-bold">3</div>
+                <div class="ml-4">
+                    <h2 class="text-2xl font-bold">Analysis Results</h2>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                <div class="p-4 bg-gray-100 rounded-lg text-center">
+                    <p class="text-sm font-medium text-gray-500">Total Samples</p>
+                    <p id="total-samples-stat" class="text-3xl font-bold text-gray-800">0</p>
+                </div>
+                <div class="p-4 bg-green-100 rounded-lg text-center">
+                    <p class="text-sm font-medium text-green-700">Positive</p>
+                    <p id="positive-samples-stat" class="text-3xl font-bold text-green-800">0</p>
+                </div>
+                <div class="p-4 bg-gray-100 rounded-lg text-center">
+                    <p class="text-sm font-medium text-gray-500">Negative</p>
+                    <p id="negative-samples-stat" class="text-3xl font-bold text-gray-800">0</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                <div>
+                    <h4 class="font-semibold text-gray-700 mb-2 text-center">Results Distribution</h4>
+                    <div class="chart-container relative h-64 md:h-72 w-full max-w-sm mx-auto">
+                        <canvas id="results-chart"></canvas>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-700 mb-2">Quality Control Summary</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                           <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2">Plate</th>
+                                    <th class="px-4 py-2">NC Mean</th>
+                                    <th class="px-4 py-2">PC Mean</th>
+                                    <th class="px-4 py-2">PC/NC Ratio</th>
+                                    <th class="px-4 py-2">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="qc-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="flex flex-col md:flex-row gap-4 mt-6">
+                        <button id="download-excel-btn" class="btn-secondary w-full" disabled>Download Excel Report</button>
+                        <button id="download-final-pdf-btn" class="btn-secondary w-full" disabled>Download Final PDF Report</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 4 -->
+        <section id="step4" class="hidden-section step-card bg-red-50 border-2 border-red-300">
+             <div class="flex items-center mb-4">
+                <div class="flex items-center justify-center w-12 h-12 bg-red-100 text-red-600 rounded-full text-xl font-bold">!</div>
+                <div class="ml-4">
+                    <h2 class="text-2xl font-bold text-red-800">QC Failure Action Required</h2>
+                    <p class="text-gray-700">One or more plates failed QC or contained invalid data. Review samples to re-run.</p>
+                </div>
+            </div>
+            <div class="mt-6">
+                <label for="rerun-ids" class="block text-sm font-medium text-red-700 mb-1">Samples to Re-run</label>
+                <textarea id="rerun-ids" rows="4" class="w-full p-2 border border-red-300 rounded-md bg-white" readonly></textarea>
+                <button id="copy-ids-btn" class="btn-danger mt-2">Copy Sample IDs</button>
+            </div>
+        </section>
+
+        <!-- Results Layout -->
+        <section id="results-layout-section" class="hidden-section">
+            <h3 class="text-2xl font-bold text-gray-800 mt-8 mb-4 text-center">Plate Results</h3>
+             <div id="results-plate-layouts-container"></div>
+        </section>
+    </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- Configuration ---
+    const BIOSENSOR_PROTOCOLS = {
+        'MARV-NP':   { name: 'MARV-NP Mix and Read', cutoff: 2.85, qcEnabled: true },
+        'EBOV GP':   { name: 'EBOV GP Mix and Read', cutoff: 2.83, qcEnabled: false },
+        'VSV-N':     { name: 'VSV-N Mix and Read', cutoff: 3.4, qcEnabled: true },
+        'CCHFV NP':  { name: 'CCHFV NP Mix and Read', cutoff: 10, qcEnabled: true },
+    };
+
+    const QC_PC_NC_RATIO = { min: 192.37, max: 279.21 };
+
+    // Reagent calculation constants
+    const REAGENT_CONSTANTS = {
+        biosensorVolPerWell_uL: 15,
+        substrateVolPerWell_uL: 30,
+        excessFactor: 1.15,
+        biosensorMixRatio: 330 / 3330,   // 10X stock dilution ratio
+        biosensorBufferRatio: 3000 / 3330, // buffer portion of diluted biosensor
+        substratePerML: 20,               // uL of substrate stock per mL of buffer
+    };
+
+    const PLATE_CONFIG = {
+        totalRows: 8,
+        totalCols: 12,
+        sampleWells: 81,
+        ncWells: [{r:7, c:4}, {r:7, c:5}, {r:7, c:6}, {r:7, c:7}],   // H5-H8
+        pcWells: [{r:7, c:8}, {r:7, c:9}, {r:7, c:10}, {r:7, c:11}], // H9-H12
+        reservedWells: [{r:6, c:9}, {r:6, c:10}, {r:6, c:11}, {r:7, c:0}, {r:7, c:1}, {r:7, c:2}, {r:7, c:3}]
+    };
+
+    // QC status constants
+    const QC_STATUS = {
+        PASS: 'PASS',
+        FAIL_RATIO: 'FAIL (Ratio)',
+        FAIL_CONTROLS: 'FAIL (Invalid Controls)',
+        INCOMPLETE: 'INCOMPLETE RAW DATA',
+        SKIPPED: 'QC Skipped',
+    };
+
+    // --- DOM Elements ---
+    const DOM = {
+        numPlatesInput: document.getElementById('num-plates'),
+        plateInputsContainer: document.getElementById('plate-inputs-container'),
+        generateBtn: document.getElementById('generate-btn'),
+        processBtn: document.getElementById('process-btn'),
+        resetBtn: document.getElementById('reset-btn'),
+        copyIdsBtn: document.getElementById('copy-ids-btn'),
+        downloadWorkplanBtn: document.getElementById('download-workplan-btn'),
+        downloadExcelBtn: document.getElementById('download-excel-btn'),
+        downloadFinalPdfBtn: document.getElementById('download-final-pdf-btn'),
+        fileUpload: document.getElementById('file-upload'),
+        fileList: document.getElementById('file-list'),
+        fileMatchInfo: document.getElementById('file-match-info'),
+        rerunIdsTextarea: document.getElementById('rerun-ids'),
+        reagentsTableBody: document.getElementById('reagents-table-body'),
+        qcTableBody: document.getElementById('qc-table-body'),
+        plateLayoutsContainer: document.getElementById('plate-layouts-container'),
+        resultsPlateLayoutsContainer: document.getElementById('results-plate-layouts-container'),
+        workplanSection: document.getElementById('workplan-section'),
+        step2Section: document.getElementById('step2'),
+        step3Section: document.getElementById('step3'),
+        step4Section: document.getElementById('step4'),
+        resultsLayoutSection: document.getElementById('results-layout-section'),
+        stats: {
+            total: document.getElementById('total-samples-stat'),
+            positive: document.getElementById('positive-samples-stat'),
+            negative: document.getElementById('negative-samples-stat'),
+        },
+        toast: document.getElementById('toast'),
+        assaySelect: document.getElementById('assay-select')
+    };
+
+    let chartInstance = null;
+    let generatedPlatesData = [];
+    let currentAnalysisData = null;
+    let isXlsxReady = false;
+    let isJsPdfReady = false;
+
+    // Check library loading
+    if (typeof XLSX !== 'undefined') {
+        isXlsxReady = true;
+    } else {
+        showToast('Warning: Excel library failed to load. File import will not work.');
+    }
+    if (typeof jspdf !== 'undefined' && typeof jspdf.jsPDF.API.autoTable !== 'undefined') {
+        isJsPdfReady = true;
+        DOM.downloadWorkplanBtn.disabled = false;
+    }
+
+    // --- Utility Functions ---
+    const showToast = (message) => {
+        DOM.toast.textContent = message;
+        DOM.toast.classList.add('show');
+        setTimeout(() => DOM.toast.classList.remove('show'), 3000);
+    };
+
+    const getRowLetter = (rowIndex) => String.fromCharCode(65 + rowIndex);
+
+    const escapeHtml = (str) => {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    };
+
+    const excelSerialToDate = (serial) => {
+        const utcDays = Math.floor(serial - 25569);
+        const utcValue = utcDays * 86400;
+        const dateInfo = new Date(utcValue * 1000);
+        const fractionalDay = serial - Math.floor(serial) + 0.0000001;
+        let totalSeconds = Math.floor(86400 * fractionalDay);
+        const seconds = totalSeconds % 60;
+        totalSeconds -= seconds;
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        return new Date(dateInfo.getFullYear(), dateInfo.getMonth(), dateInfo.getDate(), hours, minutes, seconds);
+    };
+
+    const normalizeRawData = (rawSheetData) => {
+        if (!rawSheetData || !Array.isArray(rawSheetData)) return Array.from({length: 8}, () => Array(12).fill(null));
+        const grid = [];
+        for (let r = 0; r < 8; r++) {
+            const row = [];
+            for (let c = 0; c < 12; c++) {
+                if (rawSheetData[r] && rawSheetData[r][c] !== undefined) {
+                    row.push(rawSheetData[r][c]);
+                } else {
+                    row.push(null);
+                }
+            }
+            grid.push(row);
+        }
+        return grid;
+    };
+
+    // --- Dynamic Plate Input Management ---
+    const updateInputDisplay = (textarea, gutter) => {
+        const val = textarea.value;
+        const lineCount = val.split('\n').length;
+        const displayCount = Math.max(lineCount, 8);
+
+        gutter.innerHTML = Array.from({length: displayCount}, (_, i) => i + 1).join('<br>');
+
+        textarea.style.height = 'auto';
+        const newHeight = Math.max(textarea.scrollHeight, 192);
+        textarea.style.height = newHeight + 'px';
+        gutter.style.height = newHeight + 'px';
+    };
+
+    const renderPlateInputs = () => {
+        const count = parseInt(DOM.numPlatesInput.value) || 1;
+
+        const currentValues = [];
+        const existingTextareas = DOM.plateInputsContainer.querySelectorAll('textarea');
+        existingTextareas.forEach(ta => currentValues.push(ta.value));
+
+        DOM.plateInputsContainer.innerHTML = '';
+
+        for (let i = 0; i < count; i++) {
+            const plateNum = i + 1;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'bg-gray-50 p-4 rounded-lg border border-gray-200';
+
+            const val = currentValues[i] || '';
+            const sampleCount = val.split('\n').filter(id => id.trim() !== '').length;
+            const usageColor = sampleCount > PLATE_CONFIG.sampleWells ? 'text-red-600' : 'text-gray-500';
+
+            wrapper.innerHTML = `
+                <div class="flex justify-between items-center mb-2">
+                    <label for="plate-samples-${plateNum}" class="font-semibold text-gray-700">Plate ${plateNum} Setup</label>
+                    <span id="counter-${plateNum}" class="text-xs font-medium ${usageColor}">${sampleCount} / ${PLATE_CONFIG.sampleWells} wells used</span>
+                </div>
+                <div class="excel-input-header">
+                    <div class="text-right pr-2 border-r border-gray-200 text-gray-400">#</div>
+                    <div class="pl-2">Sample ID</div>
+                    <div class="pl-2">Original Box (Opt)</div>
+                    <div class="pl-2">Location (Opt)</div>
+                </div>
+                <div class="input-wrapper">
+                    <div class="line-numbers" id="gutter-${plateNum}"></div>
+                    <textarea
+                        id="plate-samples-${plateNum}"
+                        class="excel-textarea"
+                        placeholder="Paste columns from Excel here...">${val}</textarea>
+                </div>
+            `;
+
+            DOM.plateInputsContainer.appendChild(wrapper);
+
+            const textarea = wrapper.querySelector('textarea');
+            const gutter = wrapper.querySelector('.line-numbers');
+            const counter = wrapper.querySelector('span');
+
+            updateInputDisplay(textarea, gutter);
+
+            textarea.addEventListener('input', () => {
+                updateInputDisplay(textarea, gutter);
+
+                const c = textarea.value.split('\n').filter(id => id.trim() !== '').length;
+                counter.textContent = `${c} / ${PLATE_CONFIG.sampleWells} wells used`;
+                counter.className = `text-xs font-medium ${c > PLATE_CONFIG.sampleWells ? 'text-red-600' : 'text-gray-500'}`;
+            });
+        }
+    };
+
+    renderPlateInputs();
+
+    DOM.numPlatesInput.addEventListener('change', renderPlateInputs);
+    DOM.numPlatesInput.addEventListener('input', renderPlateInputs);
+
+    // --- Reagent Calculation ---
+    const calculateReagents = (totalSamples, plateCount) => {
+        if (totalSamples === 0 && plateCount === 0) return null;
+
+        const controlWellsPerPlate = PLATE_CONFIG.ncWells.length + PLATE_CONFIG.pcWells.length;
+        const totalWells = totalSamples + (plateCount * controlWellsPerPlate);
+        const R = REAGENT_CONSTANTS;
+
+        const totalDilutedBiosensorNeeded = totalWells * R.biosensorVolPerWell_uL * R.excessFactor;
+        const totalDilutedSubstrateNeeded = totalWells * R.substrateVolPerWell_uL * R.excessFactor;
+        const stockBiosensorMixVol = totalDilutedBiosensorNeeded * R.biosensorMixRatio;
+        const biosensorBufferVol = totalDilutedBiosensorNeeded * R.biosensorBufferRatio;
+        const substrateBufferVol = totalDilutedSubstrateNeeded;
+        const stockSubstrateVol = (substrateBufferVol / 1000) * R.substratePerML;
+
+        return [
+            { name: 'Biosensor Dilution Buffer', volume: (biosensorBufferVol / 1000).toFixed(2), unit: 'mL' },
+            { name: 'Biosensor Mix (10X)', volume: Math.ceil(stockBiosensorMixVol), unit: 'uL' },
+            { name: 'Nano-Glo Assay Buffer', volume: (substrateBufferVol / 1000).toFixed(2), unit: 'mL' },
+            { name: 'Nano-Glo Luciferase Substrate', volume: Math.ceil(stockSubstrateVol), unit: 'uL' },
+        ];
+    };
+
+    // --- Generate Button Logic ---
+    DOM.generateBtn.addEventListener('click', () => {
+        generatedPlatesData = [];
+        let totalSamplesCount = 0;
+        let hasError = false;
+
+        const textareas = DOM.plateInputsContainer.querySelectorAll('textarea');
+
+        if (textareas.length === 0) {
+            showToast("Please enter at least one plate.");
+            return;
+        }
+
+        textareas.forEach((ta, index) => {
+            const plateNum = index + 1;
+            const rawVal = ta.value;
+            const lines = rawVal.split('\n').filter(line => line.trim() !== '');
+
+            if (lines.length > PLATE_CONFIG.sampleWells) {
+                showToast(`Error: Plate ${plateNum} has too many samples (${lines.length}). Max is ${PLATE_CONFIG.sampleWells}.`);
+                hasError = true;
+                return;
+            }
+
+            if (lines.length === 0) {
+                showToast(`Warning: Plate ${plateNum} has no samples.`);
+            }
+
+            totalSamplesCount += lines.length;
+
+            const plate = { plateNum: plateNum, wells: [] };
+            let currentSampleIndex = 0;
+
+            const parsedSamples = lines.map(line => {
+                const parts = line.split('\t');
+                return {
+                    id: parts[0] ? parts[0].trim() : '',
+                    box: parts[1] ? parts[1].trim() : '',
+                    loc: parts[2] ? parts[2].trim() : ''
+                };
+            });
+
+            for (let r = 0; r < 8; r++) {
+                const row = [];
+                for (let c = 0; c < 12; c++) {
+                    const well = {
+                        wellName: `${getRowLetter(r)}${c+1}`,
+                        wellType: 'empty',
+                        sampleData: null,
+                        sampleId: null,
+                        row: r, col: c
+                    };
+
+                    if (PLATE_CONFIG.ncWells.some(w => w.r === r && w.c === c)) {
+                        well.wellType = 'neg_control';
+                        well.sampleId = 'NC';
+                    } else if (PLATE_CONFIG.pcWells.some(w => w.r === r && w.c === c)) {
+                        well.wellType = 'pos_control';
+                        well.sampleId = 'PC';
+                    } else if (PLATE_CONFIG.reservedWells.some(w => w.r === r && w.c === c)) {
+                        well.wellType = 'empty';
+                        well.sampleId = 'EMPTY';
+                    } else if (currentSampleIndex < parsedSamples.length) {
+                        well.wellType = 'sample';
+                        well.sampleData = parsedSamples[currentSampleIndex];
+                        well.sampleId = parsedSamples[currentSampleIndex].id;
+                        currentSampleIndex++;
+                    } else {
+                        well.sampleId = 'EMPTY';
+                    }
+                    row.push(well);
+                }
+                plate.wells.push(row);
+            }
+            generatedPlatesData.push(plate);
+        });
+
+        if (hasError) return;
+        if (generatedPlatesData.length === 0) {
+            showToast("Please enter at least one plate.");
+            return;
+        }
+
+        const reagentResults = calculateReagents(totalSamplesCount, generatedPlatesData.length);
+        DOM.reagentsTableBody.innerHTML = reagentResults.map(r => `
+            <tr><td class="px-4 py-2">${escapeHtml(r.name)}</td><td class="px-4 py-2">${escapeHtml(r.volume)} ${escapeHtml(r.unit)}</td></tr>
+        `).join('');
+
+        DOM.plateLayoutsContainer.innerHTML = '';
+        generatedPlatesData.forEach(plate => renderPlate(plate, DOM.plateLayoutsContainer));
+
+        DOM.workplanSection.style.display = 'block';
+        DOM.step2Section.style.display = 'block';
+        DOM.generateBtn.disabled = true;
+
+        DOM.numPlatesInput.disabled = true;
+        textareas.forEach(ta => ta.disabled = true);
+    });
+
+    // --- File Reading ---
+    const readExcelFile = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const workbook = XLSX.read(e.target.result, { type: 'binary', cellDates: true });
+
+                    // Extract timestamp from "Luminescence quickread" sheet, cell D8
+                    let timestamp = null;
+                    const lumiSheet = workbook.Sheets["Luminescence quickread"];
+                    if (lumiSheet) {
+                        const cell = lumiSheet['D8'];
+                        if (cell) {
+                            if (cell.t === 'd' && cell.v instanceof Date) {
+                                timestamp = cell.v;
+                            } else if (cell.t === 'n') {
+                                timestamp = excelSerialToDate(cell.v);
+                            } else if (cell.t === 's' || cell.w) {
+                                const parsed = new Date(cell.w || cell.v);
+                                if (!isNaN(parsed.getTime())) timestamp = parsed;
+                            }
+                        }
+                    } else {
+                        console.warn(`File "${file.name}": Sheet "Luminescence quickread" not found. Timestamp will be unavailable.`);
+                    }
+
+                    // Extract plate name from "Results" sheet, cell D3
+                    const resultsSheet = workbook.Sheets["Results"];
+                    if (!resultsSheet) {
+                        reject(new Error(`Sheet "Results" not found in "${file.name}".`));
+                        return;
+                    }
+
+                    let plateName = null;
+                    const nameCell = resultsSheet['D3'];
+                    if (nameCell) {
+                        plateName = String(nameCell.v || nameCell.w || '').trim();
+                    }
+
+                    // Extract raw data from F11:Q18
+                    const rawJson = XLSX.utils.sheet_to_json(resultsSheet, {
+                        header: 1, range: "F11:Q18", defval: null
+                    });
+
+                    resolve({
+                        timestamp,
+                        plateName,
+                        rawData: normalizeRawData(rawJson),
+                        fileName: file.name
+                    });
+                } catch (err) {
+                    reject(new Error(`Failed to parse "${file.name}": ${err.message}`));
+                }
+            };
+            reader.onerror = () => reject(new Error(`Failed to read file "${file.name}".`));
+            reader.readAsBinaryString(file);
+        });
+    };
+
+    // --- File Upload & Processing (Step 2) ---
+    DOM.fileUpload.addEventListener('change', () => {
+        DOM.fileList.textContent = DOM.fileUpload.files.length > 0
+            ? `${DOM.fileUpload.files.length} file(s) selected.`
+            : '';
+        DOM.processBtn.disabled = DOM.fileUpload.files.length === 0;
+        DOM.fileMatchInfo.style.display = 'none';
+    });
+
+    DOM.processBtn.addEventListener('click', async () => {
+        DOM.processBtn.disabled = true;
+        DOM.processBtn.innerHTML = 'Processing...';
+
+        if (!isXlsxReady) {
+            showToast('Excel library not loaded. Cannot process files.');
+            DOM.processBtn.disabled = false;
+            DOM.processBtn.innerHTML = 'Process Data';
+            return;
+        }
+
+        const rawDataFiles = DOM.fileUpload.files;
+        if (rawDataFiles.length === 0) {
+            showToast('No files selected.');
+            DOM.processBtn.disabled = false;
+            DOM.processBtn.innerHTML = 'Process Data';
+            return;
+        }
+
+        const fileEntries = [];
+        const readErrors = [];
+
+        // 1. Read all files and extract metadata + data
+        for (const file of rawDataFiles) {
+            try {
+                const entry = await readExcelFile(file);
+                fileEntries.push(entry);
+            } catch (err) {
+                readErrors.push(err.message);
+            }
+        }
+
+        if (readErrors.length > 0) {
+            readErrors.forEach(msg => showToast(msg));
+        }
+
+        if (fileEntries.length === 0) {
+            showToast('No valid data files could be read.');
+            DOM.processBtn.disabled = false;
+            DOM.processBtn.innerHTML = 'Process Data';
+            return;
+        }
+
+        // 2. Sort by embedded timestamp (oldest first = Plate 1)
+        fileEntries.sort((a, b) => {
+            if (!a.timestamp && !b.timestamp) return 0;
+            if (!a.timestamp) return 1;  // files without timestamp go last
+            if (!b.timestamp) return -1;
+            return a.timestamp.getTime() - b.timestamp.getTime();
+        });
+
+        // 3. Deduplicate: same timestamp means user uploaded twice
+        const deduped = [];
+        const duplicateMessages = [];
+
+        for (const entry of fileEntries) {
+            let isDuplicate = false;
+
+            for (const existing of deduped) {
+                const sameTimestamp = entry.timestamp && existing.timestamp &&
+                    entry.timestamp.getTime() === existing.timestamp.getTime();
+
+                if (sameTimestamp) {
+                    const dataIdentical = JSON.stringify(entry.rawData) === JSON.stringify(existing.rawData);
+                    if (dataIdentical) {
+                        duplicateMessages.push(
+                            `Duplicate skipped: "${entry.fileName}" is identical to "${existing.fileName}" (same timestamp and data).`
+                        );
+                        isDuplicate = true;
+                        break;
+                    } else {
+                        duplicateMessages.push(
+                            `Warning: "${entry.fileName}" and "${existing.fileName}" share the same timestamp but contain different data. Both will be processed.`
+                        );
+                    }
+                }
+            }
+
+            if (!isDuplicate) {
+                deduped.push(entry);
+            }
+        }
+
+        duplicateMessages.forEach(msg => showToast(msg));
+
+        // 4. Check file count vs plate count
+        if (deduped.length !== generatedPlatesData.length) {
+            showToast(
+                `File/plate mismatch: ${deduped.length} unique data file(s) for ${generatedPlatesData.length} plate(s).`
+            );
+        }
+
+        // 5. Match to plates in timestamp order
+        const fetchedRawData = {};
+        const fileMatchInfo = [];
+
+        deduped.forEach((entry, index) => {
+            const plateNum = index + 1;
+            fetchedRawData[plateNum] = entry.rawData;
+            fileMatchInfo.push({
+                plateNum,
+                fileName: entry.fileName,
+                plateName: entry.plateName,
+                timestamp: entry.timestamp
+            });
+        });
+
+        // 6. Display file matching summary
+        displayFileMatchInfo(fileMatchInfo);
+
+        // 7. Analyze
+        analyzePlateData(fetchedRawData);
+    });
+
+    const displayFileMatchInfo = (matchInfo) => {
+        if (!DOM.fileMatchInfo) return;
+
+        DOM.fileMatchInfo.style.display = 'block';
+        DOM.fileMatchInfo.innerHTML = '';
+
+        const header = document.createElement('h4');
+        header.className = 'font-semibold text-gray-700 mb-2';
+        header.textContent = 'File Matching (by embedded timestamp)';
+        DOM.fileMatchInfo.appendChild(header);
+
+        const table = document.createElement('table');
+        table.className = 'w-full text-sm text-left text-gray-600';
+        table.innerHTML = `
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2">Assigned Plate</th>
+                    <th class="px-3 py-2">File Name</th>
+                    <th class="px-3 py-2">Plate Name (from file)</th>
+                    <th class="px-3 py-2">Timestamp (from file)</th>
+                </tr>
+            </thead>
+        `;
+
+        const tbody = document.createElement('tbody');
+        matchInfo.forEach(m => {
+            const tr = document.createElement('tr');
+            tr.className = 'bg-white border-b';
+
+            const tdPlate = document.createElement('td');
+            tdPlate.className = 'px-3 py-2 font-medium';
+            tdPlate.textContent = `Plate ${m.plateNum}`;
+
+            const tdFile = document.createElement('td');
+            tdFile.className = 'px-3 py-2';
+            tdFile.textContent = m.fileName;
+
+            const tdName = document.createElement('td');
+            tdName.className = 'px-3 py-2';
+            tdName.textContent = m.plateName || 'N/A';
+
+            const tdTime = document.createElement('td');
+            tdTime.className = 'px-3 py-2';
+            tdTime.textContent = m.timestamp ? m.timestamp.toLocaleString() : 'No timestamp';
+
+            tr.appendChild(tdPlate);
+            tr.appendChild(tdFile);
+            tr.appendChild(tdName);
+            tr.appendChild(tdTime);
+            tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        DOM.fileMatchInfo.appendChild(table);
+    };
+
+    // --- Analysis ---
+    const analyzePlateData = (fetchedRawData) => {
+        const selectedAssayKey = DOM.assaySelect.value;
+        const protocol = BIOSENSOR_PROTOCOLS[selectedAssayKey];
+        const resultsSummary = { positive: 0, negative: 0 };
+        const rerunSampleIds = new Set();
+        const qcStatusByPlate = {};
+        const analysisTable = [];
+        let totalSamplesProcessed = 0;
+
+        generatedPlatesData.forEach(plate => {
+            const rawData = fetchedRawData[plate.plateNum];
+            let ncMean = 'N/A', pcMean = 'N/A', ratio = 'N/A', status = QC_STATUS.INCOMPLETE;
+
+            if (rawData) {
+                const getVals = (coords) => coords.map(p => {
+                    const val = rawData[p.r][p.c];
+                    if (typeof val === 'number') return val;
+                    if (typeof val === 'string' && !isNaN(parseFloat(val))) return parseFloat(val);
+                    return NaN;
+                }).filter(v => !isNaN(v));
+
+                const ncVals = getVals(PLATE_CONFIG.ncWells);
+                const pcVals = getVals(PLATE_CONFIG.pcWells);
+
+                if (ncVals.length > 0) ncMean = ncVals.reduce((a, b) => a + b, 0) / ncVals.length;
+                if (pcVals.length > 0) pcMean = pcVals.reduce((a, b) => a + b, 0) / pcVals.length;
+
+                if (typeof ncMean === 'number' && typeof pcMean === 'number' && ncMean > 0) {
+                    ratio = (pcMean / ncMean).toFixed(2);
+                    const numRatio = parseFloat(ratio);
+
+                    if (!protocol.qcEnabled) {
+                        status = QC_STATUS.SKIPPED;
+                    } else if (numRatio >= QC_PC_NC_RATIO.min && numRatio <= QC_PC_NC_RATIO.max) {
+                        status = QC_STATUS.PASS;
+                    } else {
+                        status = QC_STATUS.FAIL_RATIO;
+                    }
+                } else {
+                    status = QC_STATUS.FAIL_CONTROLS;
+                }
+            }
+
+            qcStatusByPlate[plate.plateNum] = {
+                nc_avg: typeof ncMean === 'number' ? ncMean.toFixed(2) : 'N/A',
+                pc_avg: typeof pcMean === 'number' ? pcMean.toFixed(2) : 'N/A',
+                pc_nc_ratio: ratio,
+                status: status
+            };
+
+            // Process Samples
+            plate.wells.flat().forEach(well => {
+                if (well.wellType === 'sample' && well.sampleId) {
+                    totalSamplesProcessed++;
+                    let rawRLU = null;
+                    if (rawData) rawRLU = rawData[well.row][well.col];
+
+                    let normRLU = 'N/A', interp = 'Data Missing';
+
+                    if (typeof rawRLU === 'number' && typeof ncMean === 'number' && ncMean > 0) {
+                        const val = parseFloat((rawRLU / ncMean).toFixed(2));
+                        normRLU = val;
+                        interp = val > protocol.cutoff ? 'Positive' : 'Negative';
+
+                        if (interp === 'Positive') resultsSummary.positive++;
+                        else resultsSummary.negative++;
+                    } else {
+                        interp = 'Invalid Data/NC';
+                        rerunSampleIds.add(well.sampleId);
+                    }
+
+                    if (protocol.qcEnabled && status.includes('FAIL')) {
+                        interp += ' (Plate QC Fail)';
+                        rerunSampleIds.add(well.sampleId);
+                    }
+
+                    well.result = { interpretation: interp, normalizedRLU: normRLU, rawRLU };
+
+                    analysisTable.push({
+                        ...well,
+                        rawRLU,
+                        normalizedRLU: normRLU,
+                        interpretation: interp,
+                        plateStatus: status,
+                        originalBox: well.sampleData ? well.sampleData.box : '',
+                        originalLoc: well.sampleData ? well.sampleData.loc : ''
+                    });
+                }
+            });
+        });
+
+        let totalSamplesInput = 0;
+        DOM.plateInputsContainer.querySelectorAll('textarea').forEach(ta => {
+             totalSamplesInput += ta.value.split('\n').filter(id => id.trim() !== '').length;
+        });
+
+        currentAnalysisData = { analysisTable, qcStatusByPlate, rawData: fetchedRawData, ...resultsSummary, total: totalSamplesInput };
+        updateDashboard(resultsSummary, rerunSampleIds);
+    };
+
+    const updateDashboard = (summary, rerunIds) => {
+        DOM.stats.total.textContent = currentAnalysisData.total;
+        DOM.stats.positive.textContent = summary.positive;
+        DOM.stats.negative.textContent = summary.negative;
+
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = new Chart(document.getElementById('results-chart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Positive', 'Negative'],
+                datasets: [{
+                    data: [summary.positive, summary.negative],
+                    backgroundColor: ['#F87171', '#60A5FA'],
+                    borderWidth: 0
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '65%' }
+        });
+
+        DOM.qcTableBody.innerHTML = Object.entries(currentAnalysisData.qcStatusByPlate).map(([num, qc]) => {
+            let statusClass = 'bg-red-100 text-red-800';
+            if (qc.status === QC_STATUS.PASS) statusClass = 'bg-green-100 text-green-800';
+            else if (qc.status === QC_STATUS.SKIPPED) statusClass = 'bg-gray-100 text-gray-800';
+
+            return `
+                <tr class="bg-white border-b hover:bg-gray-50">
+                    <td class="px-4 py-2 font-medium">${escapeHtml(String(num))}</td>
+                    <td class="px-4 py-2">${escapeHtml(qc.nc_avg)}</td>
+                    <td class="px-4 py-2">${escapeHtml(qc.pc_avg)}</td>
+                    <td class="px-4 py-2">${escapeHtml(String(qc.pc_nc_ratio))}</td>
+                    <td class="px-4 py-2">
+                        <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">
+                            ${escapeHtml(qc.status)}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        DOM.resultsPlateLayoutsContainer.innerHTML = '';
+        generatedPlatesData.forEach(plate => renderPlate(plate, DOM.resultsPlateLayoutsContainer, true));
+
+        if (rerunIds.size > 0) {
+            DOM.step4Section.style.display = 'block';
+            DOM.rerunIdsTextarea.value = [...rerunIds].join('\n');
+        } else {
+            DOM.step4Section.style.display = 'none';
+        }
+
+        DOM.processBtn.innerHTML = 'Process Data';
+        DOM.processBtn.disabled = false;
+        DOM.downloadExcelBtn.disabled = !isXlsxReady;
+        DOM.downloadFinalPdfBtn.disabled = !isJsPdfReady;
+
+        DOM.step3Section.style.display = 'block';
+        DOM.resultsLayoutSection.style.display = 'block';
+        DOM.workplanSection.style.display = 'none';
+    };
+
+    const renderPlate = (plateData, container, showResults = false) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bg-white p-4 rounded-lg shadow-md mb-6';
+
+        // Look up QC status from analysis data instead of plate object
+        const qcData = showResults && currentAnalysisData
+            ? currentAnalysisData.qcStatusByPlate[plateData.plateNum]
+            : null;
+
+        let headerText = `Plate ${plateData.plateNum}`;
+        const headerEl = document.createElement('h4');
+        headerEl.className = 'font-semibold text-center text-gray-700 mb-4';
+        headerEl.textContent = headerText;
+
+        if (qcData && qcData.status.includes('FAIL')) {
+            const badge = document.createElement('span');
+            badge.className = 'ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded';
+            badge.textContent = 'QC FAIL';
+            headerEl.appendChild(badge);
+        }
+
+        wrapper.appendChild(headerEl);
+
+        const grid = document.createElement('div');
+        grid.className = 'plate-grid';
+
+        // Column headers
+        const emptyHeader = document.createElement('div');
+        emptyHeader.className = 'well-header';
+        grid.appendChild(emptyHeader);
+
+        for (let i = 1; i <= 12; i++) {
+            const colHeader = document.createElement('div');
+            colHeader.className = 'well-header flex justify-center';
+            colHeader.textContent = i;
+            grid.appendChild(colHeader);
+        }
+
+        plateData.wells.forEach((row, rIdx) => {
+            const rowHeader = document.createElement('div');
+            rowHeader.className = 'well-header flex items-center justify-center';
+            rowHeader.textContent = getRowLetter(rIdx);
+            grid.appendChild(rowHeader);
+
+            row.forEach(well => {
+                let bg = 'bg-gray-100', text = 'text-gray-400';
+                const content = well.sampleId || '';
+                let tipLines = [`Well: ${well.wellName}`, `Type: ${well.wellType}`];
+
+                if (well.wellType === 'sample') {
+                    bg = 'bg-white border border-gray-200'; text = 'text-gray-800';
+                    tipLines.push(`ID: ${well.sampleId}`);
+                    if (well.sampleData && well.sampleData.box) tipLines.push(`Box: ${well.sampleData.box}`);
+                }
+                else if (well.wellType === 'neg_control') { bg = 'bg-blue-200'; text = 'text-blue-800'; }
+                else if (well.wellType === 'pos_control') { bg = 'bg-green-200'; text = 'text-green-800'; }
+
+                if (showResults && well.result) {
+                    tipLines.push(`Res: ${well.result.interpretation}`, `Val: ${well.result.normalizedRLU}`);
+                    if (well.result.interpretation.includes('Positive')) { bg = 'bg-red-400'; text = 'text-white'; }
+                    else if (well.result.interpretation.includes('Negative')) { bg = 'bg-blue-400'; text = 'text-white'; }
+                }
+
+                const div = document.createElement('div');
+                div.className = `well ${bg} ${text}`;
+
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'w-full text-center px-1';
+                contentDiv.textContent = content;
+
+                const tooltip = document.createElement('div');
+                tooltip.className = 'well-tooltip';
+                tooltip.textContent = tipLines.join(' | ');
+
+                div.appendChild(contentDiv);
+                div.appendChild(tooltip);
+                grid.appendChild(div);
+            });
+        });
+
+        wrapper.appendChild(grid);
+        container.appendChild(wrapper);
+    };
+
+    // --- Export Logic ---
+    DOM.downloadExcelBtn.addEventListener('click', () => {
+        if (!currentAnalysisData) return;
+        const wb = XLSX.utils.book_new();
+
+        const dataRows = [['Sample ID', 'Original Box', 'Location', 'Well', 'Plate', 'Raw RLU', 'Norm RLU', 'Result', 'Plate QC']];
+        currentAnalysisData.analysisTable.forEach(row => {
+            dataRows.push([
+                row.sampleId,
+                row.originalBox,
+                row.originalLoc,
+                row.wellName,
+                row.plateNum,
+                row.rawRLU,
+                row.normalizedRLU,
+                row.interpretation,
+                row.plateStatus
+            ]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(dataRows);
+        XLSX.utils.book_append_sheet(wb, ws, "Analysis");
+        XLSX.writeFile(wb, `Analysis_Report_${Date.now()}.xlsx`);
+    });
+
+    DOM.downloadFinalPdfBtn.addEventListener('click', () => {
+        if (!currentAnalysisData) return;
+        const doc = new jspdf.jsPDF();
+        doc.text(`Assay Report: ${BIOSENSOR_PROTOCOLS[DOM.assaySelect.value].name}`, 14, 20);
+
+        const rows = currentAnalysisData.analysisTable.map(r => [
+            r.sampleId,
+            r.originalBox,
+            r.originalLoc,
+            r.wellName,
+            r.plateNum,
+            r.rawRLU,
+            r.normalizedRLU,
+            r.interpretation
+        ]);
+
+        doc.autoTable({
+            startY: 30,
+            head: [['ID', 'Box', 'Loc', 'Well', 'Plate', 'Raw', 'Norm', 'Result']],
+            body: rows,
+            styles: { fontSize: 8 }
+        });
+        doc.save(`Report_${Date.now()}.pdf`);
+    });
+
+    DOM.resetBtn.addEventListener('click', () => window.location.reload());
+
+    DOM.copyIdsBtn.addEventListener('click', () => {
+        const text = DOM.rerunIdsTextarea.value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text)
+                .then(() => showToast('Copied to clipboard'))
+                .catch(() => {
+                    // Fallback for older browsers
+                    DOM.rerunIdsTextarea.select();
+                    document.execCommand('copy');
+                    showToast('Copied to clipboard');
+                });
+        } else {
+            DOM.rerunIdsTextarea.select();
+            document.execCommand('copy');
+            showToast('Copied to clipboard');
+        }
+    });
+});
+</script>
+</body>
+</html>

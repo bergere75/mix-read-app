@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Target Assay Supply Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .input-group label {
+            font-weight: 500;
+            color: #374151;
+        }
+        .input-group input[type="number"] {
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 16px;
+            color: #1f2937;
+            background-color: #f9fafb;
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .input-group input[type="number"]:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+        .section-title {
+            font-weight: 600;
+            font-size: 1.25rem;
+            color: #1f2937;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 8px;
+        }
+        .results-section {
+            background-color: #f9fafb;
+            padding: 24px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .results-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dashed #e5e7eb;
+        }
+        .results-item:last-child {
+            border-bottom: none;
+        }
+        .results-item span:first-child {
+            font-weight: 500;
+            color: #4b5563;
+        }
+        .results-item span:last-child {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .button-group {
+            display: flex;
+            gap: 16px;
+        }
+        .button {
+            flex: 1;
+            padding: 12px 24px;
+            background-color: #3b82f6;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+            text-align: center;
+        }
+        .button:hover {
+            background-color: #2563eb;
+            box-shadow: 0 6px 15px rgba(59, 130, 246, 0.4);
+        }
+        .button-green {
+            background-color: #10b981;
+            box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+        }
+        .button-green:hover {
+            background-color: #059669;
+            box-shadow: 0 6px 15px rgba(16, 185, 129, 0.4);
+        }
+        .grid-cols-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .error-message {
+            color: #ef4444;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 400;
+            color: #374151;
+        }
+        .checkbox-group input[type="checkbox"] {
+            accent-color: #3b82f6;
+            width: 1.25em;
+            height: 1.25em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Multi-Target Assay Supply Calculator</h1>
+
+        <!-- Assay Parameters Section -->
+        <div class="grid-cols-2">
+            <div class="input-group">
+                <label for="numUniqueBiologicalSamples">Number of Serum Samples to be Tested:</label>
+                <input type="number" id="numUniqueBiologicalSamples" value="1500" min="1" class="rounded-lg">
+            </div>
+            <div class="input-group">
+                <label for="numReplicates">Replicates per Sample (e.g., 3 for triplicates):</label>
+                <input type="number" id="numReplicates" value="3" min="1" class="rounded-lg">
+            </div>
+            <div class="input-group">
+                <label for="excessPercentage">General Excess for Supplies (%):</label>
+                <input type="number" id="excessPercentage" value="20" min="0" max="100" class="rounded-lg">
+            </div>
+        </div>
+
+        <div class="section-title">Select Assay Targets</div>
+        <div class="checkbox-group">
+            <label>
+                <input type="checkbox" id="selectAllTargets">
+                Select All Targets
+            </label>
+            <label>
+                <input type="checkbox" name="assayTarget" value="MARV NP" checked>
+                MARV NP
+            </label>
+            <label>
+                <input type="checkbox" name="assayTarget" value="MARV VP40">
+                MARV VP40
+            </label>
+            <label>
+                <input type="checkbox" name="assayTarget" value="EBOV NP">
+                EBOV NP
+            </label>
+            <label>
+                <input type="checkbox" name="assayTarget" value="SUDV NP">
+                SUDV NP
+            </label>
+            <label>
+                <input type="checkbox" name="assayTarget" value="EBOV sGP">
+                EBOV sGP
+            </label>
+        </div>
+
+        <!-- Component Volumes Section -->
+        <div class="section-title">Component Volumes (uL per reaction well)</div>
+        <div class="grid-cols-2">
+            <div class="input-group">
+                <label for="biosensorMixVol">Biosensor Mix (per target per well):</label>
+                <input type="number" id="biosensorMixVol" value="15" min="0" class="rounded-lg">
+            </div>
+            <div class="input-group">
+                <label for="sampleVol">Sample Volume (per target per well):</label>
+                <input type="number" id="sampleVol" value="15" min="0" class="rounded-lg">
+            </div>
+            <div class="input-group">
+                <label for="nanoGloSubstrateVol">Nano-Glo Luciferase Assay Substrate (per well):</label>
+                <input type="number" id="nanoGloSubstrateVol" value="30" min="0" class="rounded-lg">
+            </div>
+            <div class="input-group">
+                <label for="totalReactionVolume">Calculated Total Reaction Volume (uL):</label>
+                <input type="number" id="totalReactionVolume" value="60" readonly class="rounded-lg bg-gray-100 cursor-not-allowed">
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="calculateBtn" class="button">Calculate Supplies</button>
+            <button id="exportBtn" class="button button-green">Export to Excel</button>
+        </div>
+
+        <div id="errorMessage" class="error-message hidden"></div>
+
+        <!-- Calculated Results Section -->
+        <div id="results" class="results-section">
+            <p class="text-gray-600 text-center">Enter parameters and click "Calculate Supplies" to see results.</p>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // --- Constants ---
+        const SAMPLES_PER_REACTION_PLATE = 81;
+        const TIPS_PER_BOX = 96;
+        const WELLS_PER_PLATE = 96;
+        const ALIQUOT_VOLUME_UL = 200;
+        // Base control wells per plate: Blank(2) + Neg(2) + Biosensor-only(2)
+        const BASE_CONTROL_WELLS = 6;
+        const CONTROL_WELLS_PER_TYPE = 2;
+        // Each deep-well plate batch requires 2 additional regular plates
+        // (1 for serum aliquot transfer, 1 for dilution intermediate)
+        const ADDITIONAL_REGULAR_PLATES_PER_BATCH = 2;
+
+        // --- DOM Elements ---
+        const DOM = {
+            numSamples: document.getElementById('numUniqueBiologicalSamples'),
+            numReplicates: document.getElementById('numReplicates'),
+            excessPct: document.getElementById('excessPercentage'),
+            biosensorVol: document.getElementById('biosensorMixVol'),
+            sampleVol: document.getElementById('sampleVol'),
+            substrateVol: document.getElementById('nanoGloSubstrateVol'),
+            totalVol: document.getElementById('totalReactionVolume'),
+            selectAll: document.getElementById('selectAllTargets'),
+            calculateBtn: document.getElementById('calculateBtn'),
+            exportBtn: document.getElementById('exportBtn'),
+            errorDiv: document.getElementById('errorMessage'),
+            resultsDiv: document.getElementById('results'),
+        };
+
+        // --- Toggle All Targets ---
+        const toggleAllTargets = (checked) => {
+            document.querySelectorAll('input[name="assayTarget"]').forEach(cb => {
+                cb.checked = checked;
+            });
+            calculateSupplies();
+        };
+
+        DOM.selectAll.addEventListener('change', (e) => toggleAllTargets(e.target.checked));
+
+        // --- Update Total Reaction Volume ---
+        const updateTotalReactionVolume = () => {
+            const biosensor = parseFloat(DOM.biosensorVol.value) || 0;
+            const sample = parseFloat(DOM.sampleVol.value) || 0;
+            const substrate = parseFloat(DOM.substrateVol.value) || 0;
+            DOM.totalVol.value = (biosensor + sample + substrate).toFixed(2);
+        };
+
+        // --- Validation & Calculation ---
+        const getCalculationData = () => {
+            const numSamples = parseFloat(DOM.numSamples.value);
+            const numReplicates = parseFloat(DOM.numReplicates.value);
+            const excessPct = parseFloat(DOM.excessPct.value);
+
+            const selectedTargets = Array.from(
+                document.querySelectorAll('input[name="assayTarget"]:checked')
+            ).map(node => node.value);
+            const numberOfTargets = selectedTargets.length;
+
+            const biosensorVol = parseFloat(DOM.biosensorVol.value);
+            const sampleVol = parseFloat(DOM.sampleVol.value);
+            const substrateVol = parseFloat(DOM.substrateVol.value);
+
+            // Validation
+            const errors = [];
+            if (isNaN(numSamples) || numSamples < 0) errors.push("Number of Samples must be a non-negative number.");
+            if (isNaN(numReplicates) || numReplicates <= 0) errors.push("Replicates per Sample must be a positive number.");
+            if (isNaN(excessPct) || excessPct < 0 || excessPct > 100) errors.push("General Excess must be between 0 and 100.");
+            if (numberOfTargets === 0) errors.push("At least one assay target must be selected.");
+            if (isNaN(biosensorVol) || biosensorVol < 0) errors.push("Biosensor Mix volume must be non-negative.");
+            if (isNaN(sampleVol) || sampleVol < 0) errors.push("Sample Volume must be non-negative.");
+            if (isNaN(substrateVol) || substrateVol < 0) errors.push("Nano-Glo Substrate volume must be non-negative.");
+
+            if (errors.length > 0) return { isValid: false, errors };
+
+            const excessFactor = 1 + excessPct / 100;
+
+            // --- Calculations ---
+            const numBatches = numSamples > 0 ? Math.ceil(numSamples / SAMPLES_PER_REACTION_PLATE) : 0;
+            const totalSampleWells = numSamples * numReplicates * numberOfTargets;
+
+            // Control wells depend on selected targets
+            let controlWellsPerPlate = BASE_CONTROL_WELLS;
+
+            let posControlMARVNP = 0;
+            if (selectedTargets.includes("MARV NP")) {
+                posControlMARVNP = CONTROL_WELLS_PER_TYPE;
+                controlWellsPerPlate += CONTROL_WELLS_PER_TYPE;
+            }
+
+            let posControlMARVVP40 = 0;
+            if (selectedTargets.includes("MARV VP40")) {
+                posControlMARVVP40 = CONTROL_WELLS_PER_TYPE;
+                controlWellsPerPlate += CONTROL_WELLS_PER_TYPE;
+            }
+
+            let posControlEBOVSUDV = 0;
+            const hasEBOVorSUDV = selectedTargets.some(t => ["EBOV NP", "SUDV NP", "EBOV sGP"].includes(t));
+            if (hasEBOVorSUDV) {
+                posControlEBOVSUDV = CONTROL_WELLS_PER_TYPE;
+                controlWellsPerPlate += CONTROL_WELLS_PER_TYPE;
+            }
+
+            const totalControlWells = numBatches * controlWellsPerPlate;
+            const grandTotalWells = totalSampleWells + totalControlWells;
+
+            let reactionPlates = grandTotalWells > 0 ? Math.ceil(grandTotalWells / WELLS_PER_PLATE) : 0;
+            if (numberOfTargets > 0 && numSamples === 0 && controlWellsPerPlate > 0) {
+                reactionPlates = Math.max(1, reactionPlates);
+            }
+
+            // Volume calculations (all plates filled to capacity for reagent prep)
+            const totalBiosensorMix_mL = ((reactionPlates * WELLS_PER_PLATE) * biosensorVol * excessFactor) / 1000;
+            const totalSampleVol_mL = (sampleVol * grandTotalWells * excessFactor) / 1000;
+            const totalSubstrate_mL = ((reactionPlates * WELLS_PER_PLATE) * substrateVol * excessFactor) / 1000;
+
+            // Consumables
+            const deepWellPlates = numBatches;
+            const deepWellPlatesWithExcess = Math.ceil(deepWellPlates * excessFactor);
+
+            const additionalRegularPlates = deepWellPlates * ADDITIONAL_REGULAR_PLATES_PER_BATCH;
+            const totalRegularPlates = reactionPlates + additionalRegularPlates;
+            const totalRegularPlatesWithExcess = Math.ceil(totalRegularPlates * excessFactor);
+
+            // Tips
+            const tips20uL = Math.ceil(grandTotalWells * excessFactor);
+            const tips200uL_reaction = Math.ceil(reactionPlates * 24 * excessFactor);
+            const tips200uL_serum = Math.ceil(numSamples * excessFactor);
+            const tips1000uL = Math.ceil(numSamples * excessFactor);
+
+            const boxes20uL = Math.ceil(tips20uL / TIPS_PER_BOX);
+            const boxes200uL_reaction = Math.ceil(tips200uL_reaction / TIPS_PER_BOX);
+            const boxes200uL_serum = Math.ceil(tips200uL_serum / TIPS_PER_BOX);
+            const boxes1000uL = Math.ceil(tips1000uL / TIPS_PER_BOX);
+
+            // Seals
+            const microseals = Math.ceil(reactionPlates * excessFactor);
+            const aluminumSeals = Math.ceil((deepWellPlates + additionalRegularPlates) * excessFactor);
+
+            // Control aliquots (fixed 2 negative control wells per plate)
+            const negControlWells = reactionPlates * CONTROL_WELLS_PER_TYPE;
+            const negControlAliquots = Math.ceil((negControlWells * sampleVol) / ALIQUOT_VOLUME_UL * excessFactor);
+
+            let posMARVNPAliquots = 0;
+            if (selectedTargets.includes("MARV NP")) {
+                posMARVNPAliquots = Math.ceil((reactionPlates * posControlMARVNP * sampleVol) / ALIQUOT_VOLUME_UL * excessFactor);
+            }
+
+            let posMARVVP40Aliquots = 0;
+            if (selectedTargets.includes("MARV VP40")) {
+                posMARVVP40Aliquots = Math.ceil((reactionPlates * posControlMARVVP40 * sampleVol) / ALIQUOT_VOLUME_UL * excessFactor);
+            }
+
+            let posEBOVSUDVAliquots = 0;
+            if (hasEBOVorSUDV) {
+                posEBOVSUDVAliquots = Math.ceil((reactionPlates * posControlEBOVSUDV * sampleVol) / ALIQUOT_VOLUME_UL * excessFactor);
+            }
+
+            return {
+                isValid: true,
+                inputs: {
+                    numSamples,
+                    numReplicates,
+                    excessPct,
+                    selectedTargets: selectedTargets.join(", "),
+                    biosensorVol,
+                    sampleVol,
+                    substrateVol
+                },
+                results: {
+                    totalSampleWells,
+                    totalControlWells,
+                    grandTotalWells,
+                    totalBiosensorMix_mL,
+                    totalSampleVol_mL,
+                    totalSubstrate_mL,
+                    boxes20uL,
+                    boxes200uL_reaction,
+                    boxes200uL_serum,
+                    boxes1000uL,
+                    halfAreaWhitePlates: Math.ceil(reactionPlates * excessFactor),
+                    additionalRegularPlates: Math.ceil(additionalRegularPlates * excessFactor),
+                    totalRegularPlates: totalRegularPlatesWithExcess,
+                    deepWellPlates: deepWellPlatesWithExcess,
+                    microseals,
+                    aluminumSeals,
+                    negControlAliquots,
+                    posMARVNPAliquots,
+                    posMARVVP40Aliquots,
+                    posEBOVSUDVAliquots
+                }
+            };
+        };
+
+        const escapeHtml = (str) => {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        };
+
+        const calculateSupplies = () => {
+            const data = getCalculationData();
+
+            if (!data.isValid) {
+                DOM.errorDiv.classList.remove('hidden');
+                DOM.errorDiv.innerHTML = data.errors.map(e => escapeHtml(e)).join('<br>');
+                DOM.resultsDiv.innerHTML = '<p class="text-gray-600 text-center">Please correct the input errors.</p>';
+                return;
+            }
+
+            DOM.errorDiv.classList.add('hidden');
+            DOM.errorDiv.innerHTML = '';
+
+            const r = data.results;
+            const items = [
+                ['Total Sample Wells', r.totalSampleWells.toFixed(0)],
+                ['Total Control Wells', r.totalControlWells.toFixed(0)],
+                ['Grand Total Wells', r.grandTotalWells.toFixed(0)],
+                ['Total Biosensor Mix (with excess)', `${r.totalBiosensorMix_mL.toFixed(3)} mL`],
+                ['Total Sample Volume (with excess)', `${r.totalSampleVol_mL.toFixed(3)} mL`],
+                ['Total Nano-Glo Substrate (with excess)', `${r.totalSubstrate_mL.toFixed(3)} mL`],
+                ['20 uL Pipette Tip Boxes', r.boxes20uL],
+                ['200 uL Pipette Tip Boxes (Reaction Plates)', r.boxes200uL_reaction],
+                ['200 uL Pipette Tip Boxes (Serum Aliquot)', r.boxes200uL_serum],
+                ['1000 uL Pipette Tip Boxes (Deep Well)', r.boxes1000uL],
+                ['96-well Half Area White Plates', r.halfAreaWhitePlates],
+                ['Regular 96-well Plates (Total)', r.totalRegularPlates],
+                ['96-well Deep Well Plates', r.deepWellPlates],
+                ["Microseal 'B' seals", r.microseals],
+                ['Aluminum Seals', r.aluminumSeals],
+                ['Neg Control Aliquots (200uL)', r.negControlAliquots],
+            ];
+
+            if (r.posMARVNPAliquots > 0) items.push(['Pos Control (MARV NP) Aliquots', r.posMARVNPAliquots]);
+            if (r.posMARVVP40Aliquots > 0) items.push(['Pos Control (MARV VP40) Aliquots', r.posMARVVP40Aliquots]);
+            if (r.posEBOVSUDVAliquots > 0) items.push(['Pos Control (EBOV/SUDV) Aliquots', r.posEBOVSUDVAliquots]);
+
+            DOM.resultsDiv.innerHTML = '<div class="grid-cols-2">' +
+                items.map(([label, value]) =>
+                    `<div class="results-item"><span>${escapeHtml(label)}</span><span>${escapeHtml(String(value))}</span></div>`
+                ).join('') +
+                '</div>';
+        };
+
+        const exportToExcel = () => {
+            const data = getCalculationData();
+            if (!data.isValid) {
+                alert("Please correct the input errors before exporting:\n" + data.errors.join("\n"));
+                return;
+            }
+
+            const i = data.inputs;
+            const r = data.results;
+
+            const rows = [
+                ["Multi-Target Assay Supply List", "", ""],
+                ["Date Generated", new Date().toLocaleDateString(), ""],
+                ["", "", ""],
+                ["ASSAY PARAMETERS", "Value", "Unit"],
+                ["Number of Samples", i.numSamples, "Samples"],
+                ["Replicates per Sample", i.numReplicates, "Reps"],
+                ["General Excess %", i.excessPct, "%"],
+                ["Selected Targets", i.selectedTargets, ""],
+                ["", "", ""],
+                ["REAGENT REQUIREMENTS (Including Excess)", "Quantity", "Unit"],
+                ["Total Biosensor Mix", r.totalBiosensorMix_mL.toFixed(3), "mL"],
+                ["Total Sample Volume", r.totalSampleVol_mL.toFixed(3), "mL"],
+                ["Total Nano-Glo Substrate", r.totalSubstrate_mL.toFixed(3), "mL"],
+                ["Negative Control Aliquots", r.negControlAliquots, "Vials (200uL)"],
+                ["Pos Control (MARV NP) Aliquots", r.posMARVNPAliquots, "Vials (200uL)"],
+                ["Pos Control (MARV VP40) Aliquots", r.posMARVVP40Aliquots, "Vials (200uL)"],
+                ["Pos Control (EBOV/SUDV) Aliquots", r.posEBOVSUDVAliquots, "Vials (200uL)"],
+                ["", "", ""],
+                ["CONSUMABLES & EQUIPMENT", "Estimated Quantity", "Unit"],
+                ["20 uL Pipette Tip Boxes", r.boxes20uL, "Boxes"],
+                ["200 uL Pipette Tip Boxes", r.boxes200uL_reaction + r.boxes200uL_serum, "Boxes"],
+                ["1000 uL Pipette Tip Boxes", r.boxes1000uL, "Boxes"],
+                ["96-well Half Area White Plates", r.halfAreaWhitePlates, "Plates"],
+                ["Regular 96-well Plates", r.totalRegularPlates, "Plates"],
+                ["96-well Deep Well Plates", r.deepWellPlates, "Plates"],
+                ["Microseal 'B' seals", r.microseals, "Seals"],
+                ["Aluminum Seals", r.aluminumSeals, "Seals"]
+            ];
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [{wch: 35}, {wch: 20}, {wch: 15}];
+            XLSX.utils.book_append_sheet(wb, ws, "Assay Supplies");
+            XLSX.writeFile(wb, "Assay_Supply_List.xlsx");
+        };
+
+        // --- Event Listeners ---
+        ['biosensorMixVol', 'sampleVol', 'nanoGloSubstrateVol'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                updateTotalReactionVolume();
+                calculateSupplies();
+            });
+        });
+
+        DOM.numSamples.addEventListener('input', calculateSupplies);
+        DOM.numReplicates.addEventListener('input', calculateSupplies);
+        DOM.excessPct.addEventListener('input', calculateSupplies);
+
+        document.querySelectorAll('input[name="assayTarget"]').forEach(cb => {
+            cb.addEventListener('change', calculateSupplies);
+        });
+
+        DOM.calculateBtn.addEventListener('click', calculateSupplies);
+        DOM.exportBtn.addEventListener('click', exportToExcel);
+
+        // Initial calculation
+        updateTotalReactionVolume();
+        calculateSupplies();
+    });
+    </script>
+</body>
+</html>
